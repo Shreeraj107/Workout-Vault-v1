@@ -1,1 +1,451 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>IronVault</title>
+  <meta name="theme-color" content="#090a0f">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  
+  <style>
+    :root {
+      --bg: #090a0f;
+      --card: #14161f;
+      --accent: #00f2fe;
+      --accent-glow: rgba(0, 242, 254, 0.3);
+      --text: #ffffff;
+      --text-dim: #7d8597;
+      --border: #232736;
+      --pr-gold: #ffd700;
+      --pr-glow: rgba(255, 215, 0, 0.4);
+    }
+    
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; -webkit-tap-highlight-color: transparent; }
+    
+    body { background-color: var(--bg); color: var(--text); padding-bottom: 90px; overflow-x: hidden; }
+    
+    header { padding: 20px 24px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); background: rgba(20, 22, 31, 0.8); backdrop-filter: blur(10px); position: sticky; top: 0; z-index: 100; }
+    h1 { font-size: 1.5rem; font-weight: 800; background: linear-gradient(90deg, #00f2fe, #4facfe); -webkit-background-clip: text; -webkit-text-fill-color: transparent; letter-spacing: -0.5px; }
+    
+    .container { padding: 20px; }
+    
+    /* Smooth 120Hz View Transitions */
+    .view { display: none; }
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(15px) translateZ(0); }
+      to { opacity: 1; transform: translateY(0) translateZ(0); }
+    }
+    .view.active { display: block; animation: fadeUp 0.4s cubic-bezier(0.2, 0.8, 0.2, 1) forwards; }
+    
+    /* Muscle Grid */
+    .muscle-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; margin-top: 10px; }
+    .muscle-card { background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: 24px 16px; text-align: center; font-weight: 700; font-size: 1.1rem; cursor: pointer; transition: all 0.2s cubic-bezier(0.2, 0.8, 0.2, 1); box-shadow: 0 4px 12px rgba(0,0,0,0.2); }
+    .muscle-card:active { transform: scale(0.94) translateZ(0); border-color: var(--accent); box-shadow: 0 0 20px var(--accent-glow); }
+    
+    /* Top Bars & Buttons */
+    .top-bar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
+    .btn-back { background: none; border: none; color: var(--text-dim); font-size: 1.1rem; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 6px; transition: color 0.2s; }
+    .btn-back:active { color: var(--text); }
+    .btn-add { background: rgba(0, 242, 254, 0.1); color: var(--accent); border: 1px solid var(--accent); padding: 10px 16px; border-radius: 12px; font-weight: 700; cursor: pointer; transition: all 0.2s; }
+    .btn-add:active { transform: scale(0.95); background: var(--accent); color: #000; }
+    
+    /* Lists */
+    .exercise-item { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 18px 20px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; font-weight: 600; cursor: pointer; transition: all 0.2s; }
+    .exercise-item:active { transform: scale(0.97); border-color: var(--accent); }
+    
+    /* Set Logger */
+    .logger-card { background: var(--card); border: 1px solid var(--border); border-radius: 20px; padding: 20px; margin-bottom: 20px; box-shadow: 0 8px 24px rgba(0,0,0,0.3); }
+    .set-row { display: grid; grid-template-columns: 50px 1fr 1fr 55px; gap: 10px; align-items: center; margin-bottom: 16px; transition: all 0.3s; padding: 8px; border-radius: 12px; }
+    .ghost-info { font-size: 0.8rem; color: var(--text-dim); margin-bottom: 6px; grid-column: span 4; font-weight: 500; letter-spacing: 0.5px; }
+    
+    input { background: #08090d; border: 1px solid var(--border); color: #fff; padding: 14px 8px; border-radius: 12px; font-size: 1.1rem; font-weight: 700; text-align: center; width: 100%; outline: none; transition: border-color 0.2s; }
+    input:focus { border-color: var(--accent); box-shadow: 0 0 10px var(--accent-glow); }
+    input::placeholder { color: #3f4455; font-weight: 500; }
+    
+    .btn-check { background: var(--border); border: none; color: var(--text-dim); border-radius: 12px; height: 48px; cursor: pointer; font-size: 1.2rem; transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1); }
+    .btn-check:active { transform: scale(0.85); }
+    .btn-check.completed { background: var(--accent); color: #000; font-weight: 800; transform: scale(1); }
+    
+    /* PR Animation */
+    @keyframes prPulse {
+      0% { box-shadow: 0 0 0 0 rgba(255, 215, 0, 0.7); }
+      70% { box-shadow: 0 0 0 15px rgba(255, 215, 0, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(255, 215, 0, 0); }
+    }
+    .btn-check.pr-broken { background: var(--pr-gold); color: #000; animation: prPulse 1s ease-out; }
+    .row-pr-broken { background: rgba(255, 215, 0, 0.05); border: 1px solid rgba(255, 215, 0, 0.3); }
+    
+    /* Bottom Navigation */
+    .bottom-nav { position: fixed; bottom: 0; left: 0; right: 0; height: 85px; background: rgba(12, 14, 20, 0.9); backdrop-filter: blur(20px); border-top: 1px solid var(--border); display: flex; justify-content: space-around; align-items: flex-start; padding-top: 12px; z-index: 100; padding-bottom: env(safe-area-inset-bottom); }
+    .nav-btn { background: none; border: none; color: var(--text-dim); font-size: 0.85rem; font-weight: 600; display: flex; flex-direction: column; align-items: center; gap: 6px; cursor: pointer; width: 80px; transition: color 0.2s; }
+    .nav-btn i { font-size: 1.5rem; font-style: normal; margin-bottom: 2px; transition: transform 0.2s cubic-bezier(0.2, 0.8, 0.2, 1); }
+    .nav-btn.active { color: var(--accent); }
+    .nav-btn.active i { transform: translateY(-4px) scale(1.1); }
+    
+    /* Chart Filters */
+    .filter-pills { display: flex; gap: 10px; margin-bottom: 20px; }
+    .pill { background: var(--bg); border: 1px solid var(--border); color: var(--text-dim); padding: 8px 16px; border-radius: 20px; font-size: 0.85rem; font-weight: 600; cursor: pointer; transition: all 0.2s; flex: 1; text-align: center; }
+    .pill.active { background: var(--accent); color: #000; border-color: var(--accent); box-shadow: 0 4px 12px var(--accent-glow); }
+    
+    select { -webkit-appearance: none; background: #08090d; border: 1px solid var(--border); color: #fff; padding: 14px 16px; border-radius: 12px; font-size: 1rem; font-weight: 600; width: 100%; outline: none; margin-bottom: 20px; }
+  </style>
+</head>
+<body>
 
+  <header>
+    <h1>IronVault</h1>
+    <span id="sync-status" style="font-size: 0.75rem; color: var(--text-dim); font-weight: 600; display: flex; align-items: center; gap: 4px;">
+      <span style="display:inline-block; width:8px; height:8px; border-radius:50%; background:var(--accent);"></span> Offline Save
+    </span>
+  </header>
+
+  <div class="container">
+    <!-- VIEW 1: MUSCLES -->
+    <section id="view-muscles" class="view active">
+      <p style="color: var(--text-dim); margin-bottom: 16px; font-weight: 600;">Select target muscle</p>
+      <div class="muscle-grid" id="muscle-container"></div>
+    </section>
+
+    <!-- VIEW 2: EXERCISES -->
+    <section id="view-exercises" class="view">
+      <div class="top-bar">
+        <button class="btn-back" onclick="switchView('view-muscles')">‹ Back</button>
+        <button class="btn-add" onclick="promptAddExercise()">+ New Exercise</button>
+      </div>
+      <h2 id="selected-muscle-name" style="margin-bottom: 20px; font-size: 1.8rem;"></h2>
+      <div id="exercise-list"></div>
+    </section>
+
+    <!-- VIEW 3: LOGGER -->
+    <section id="view-logger" class="view">
+      <div class="top-bar">
+        <button class="btn-back" onclick="switchView('view-exercises')">‹ Back</button>
+        <span id="logger-status" style="color: var(--pr-gold); font-size: 0.9rem; font-weight: 800; text-transform: uppercase; letter-spacing: 1px;"></span>
+      </div>
+      <h2 id="logger-exercise-name" style="margin-bottom: 20px; font-size: 1.6rem; line-height: 1.2;"></h2>
+      <div class="logger-card" id="sets-container"></div>
+    </section>
+
+    <!-- VIEW 4: ANALYTICS -->
+    <section id="view-analytics" class="view">
+      <h2 style="margin-bottom: 16px;">Strength Curve (1RM)</h2>
+      <div class="filter-pills">
+        <div class="pill active" onclick="setChartRange(28, this)">28 Days</div>
+        <div class="pill" onclick="setChartRange(90, this)">3 Months</div>
+        <div class="pill" onclick="setChartRange(180, this)">6 Months</div>
+      </div>
+      <select id="analytics-exercise-picker" onchange="renderChart()"></select>
+      <div class="logger-card" style="padding: 16px 8px;">
+        <canvas id="progressChart" height="260"></canvas>
+      </div>
+    </section>
+  </div>
+
+  <nav class="bottom-nav">
+    <button class="nav-btn active" id="tab-workout" onclick="openWorkoutTab()">
+      <i>🏋️</i>
+      <span>Workout</span>
+    </button>
+    <button class="nav-btn" id="tab-progress" onclick="openProgressTab()">
+      <i>📈</i>
+      <span>Progress</span>
+    </button>
+  </nav>
+
+  <script>
+    // --- SET YOUR GOOGLE SHEETS WEBHOOK URL HERE ---
+    const GOOGLE_WEBHOOK_URL = ""; 
+
+    const MUSCLES = ['Chest', 'Back', 'Shoulder', 'Bicep', 'Tricep', 'Legs', 'Traps', 'Abs'];
+    let state = {
+      exercises: JSON.parse(localStorage.getItem('iv_exercises') || '[]'),
+      logs: JSON.parse(localStorage.getItem('iv_logs') || '[]'),
+      activeMuscle: '',
+      activeExercise: null,
+      chartDays: 28
+    };
+
+    let chartInstance = null;
+
+    // Haptic Feedback Helper
+    function triggerHaptic(type = 'light') {
+      if (!navigator.vibrate) return;
+      if (type === 'light') navigator.vibrate(30);
+      if (type === 'heavy') navigator.vibrate([50, 50, 50]); // PR vibration
+    }
+
+    function init() {
+      const container = document.getElementById('muscle-container');
+      container.innerHTML = MUSCLES.map(m => `
+        <div class="muscle-card" onclick="selectMuscle('${m}')">${m}</div>
+      `).join('');
+    }
+
+    function switchView(viewId) {
+      triggerHaptic();
+      document.querySelectorAll('.view').forEach(v => {
+        v.classList.remove('active');
+      });
+      // Small delay ensures animation resets cleanly
+      setTimeout(() => {
+        document.getElementById(viewId).classList.add('active');
+        window.scrollTo(0,0);
+      }, 10);
+    }
+
+    function selectMuscle(name) {
+      state.activeMuscle = name;
+      document.getElementById('selected-muscle-name').innerText = name;
+      renderExercises();
+      switchView('view-exercises');
+    }
+
+    function promptAddExercise() {
+      const name = prompt(`Enter new exercise for ${state.activeMuscle}:`);
+      if (!name || !name.trim()) return;
+      const newEx = { id: Date.now(), muscle: state.activeMuscle, name: name.trim() };
+      state.exercises.push(newEx);
+      localStorage.setItem('iv_exercises', JSON.stringify(state.exercises));
+      renderExercises();
+    }
+
+    function renderExercises() {
+      const list = document.getElementById('exercise-list');
+      const filtered = state.exercises.filter(e => e.muscle === state.activeMuscle);
+      
+      if (filtered.length === 0) {
+        list.innerHTML = `<div style="text-align: center; padding: 40px 20px; color: var(--text-dim);">
+          <i style="font-size: 2rem; display: block; margin-bottom: 10px;">📋</i>
+          No exercises yet.<br>Tap above to add your first one.
+        </div>`;
+        return;
+      }
+      
+      list.innerHTML = filtered.map(e => `
+        <div class="exercise-item" onclick="openLogger(${e.id})">
+          <span>${e.name}</span>
+          <span style="color: var(--accent); font-size: 1.2rem;">→</span>
+        </div>
+      `).join('');
+    }
+
+    function openLogger(exerciseId) {
+      state.activeExercise = state.exercises.find(e => e.id === exerciseId);
+      document.getElementById('logger-exercise-name').innerText = state.activeExercise.name;
+      document.getElementById('logger-status').innerText = '';
+      
+      const lastSession = getLastSessionSets(exerciseId);
+      const container = document.getElementById('sets-container');
+      
+      let html = '';
+      // Defaults to 3 sets
+      for (let i = 1; i <= 3; i++) {
+        const prev = lastSession.find(s => s.setNumber === i);
+        const prevTxt = prev ? `Last: ${prev.weight}kg × ${prev.reps}` : 'First time logging this set';
+        
+        // Auto-fill inputs if there's a previous session (Ghost Data)
+        const ghostWeight = prev ? prev.weight : '';
+        const ghostReps = prev ? prev.reps : '';
+        
+        html += `
+          <div class="set-row" id="row-${i}">
+            <div class="ghost-info">${prevTxt}</div>
+            <span style="font-weight: 700; color: var(--text-dim); font-size: 0.9rem;">SET ${i}</span>
+            <input type="number" id="weight-${i}" placeholder="kg" value="${ghostWeight}" inputmode="decimal">
+            <input type="number" id="reps-${i}" placeholder="reps" value="${ghostReps}" inputmode="numeric">
+            <button class="btn-check" onclick="completeSet(${i})">✓</button>
+          </div>
+        `;
+      }
+      container.innerHTML = html;
+      switchView('view-logger');
+    }
+
+    function getLastSessionSets(exId) {
+      const exLogs = state.logs.filter(l => l.exerciseId === exId);
+      if (exLogs.length === 0) return [];
+      const latestDate = exLogs[exLogs.length - 1].date;
+      return exLogs.filter(l => l.date === latestDate);
+    }
+
+    function completeSet(setNum) {
+      const weight = parseFloat(document.getElementById(`weight-${setNum}`).value);
+      const reps = parseInt(document.getElementById(`reps-${setNum}`).value);
+      
+      if (isNaN(weight) || isNaN(reps) || reps <= 0) {
+        alert('Please enter valid weight and reps');
+        return;
+      }
+
+      // Epley Formula for 1 Rep Max
+      const est1RM = weight * (1 + reps / 30);
+      
+      // Calculate Historical Max for this specific exercise
+      const historicalMax = Math.max(0, ...state.logs
+        .filter(l => l.exerciseId === state.activeExercise.id)
+        .map(l => l.est1RM || 0));
+
+      const isPR = historicalMax > 0 && est1RM > historicalMax;
+
+      const logEntry = {
+        exerciseId: state.activeExercise.id,
+        exerciseName: state.activeExercise.name,
+        muscleGroup: state.activeExercise.muscle,
+        setNumber: setNum,
+        weight: weight,
+        reps: reps,
+        est1RM: parseFloat(est1RM.toFixed(1)),
+        isPr: isPR,
+        date: new Date().toISOString().split('T')[0],
+        time: new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit' })
+      };
+
+      state.logs.push(logEntry);
+      localStorage.setItem('iv_logs', JSON.stringify(state.logs));
+
+      // UI Updates & Animations
+      const row = document.getElementById(`row-${setNum}`);
+      const btn = row.querySelector(`.btn-check`);
+      
+      btn.classList.add('completed');
+      btn.innerHTML = '✓';
+      
+      if (isPR) {
+        triggerHaptic('heavy');
+        btn.classList.add('pr-broken');
+        row.classList.add('row-pr-broken');
+        document.getElementById('logger-status').innerText = '🔥 NEW PR!';
+      } else {
+        triggerHaptic('light');
+      }
+
+      // Sync to Google Sheets instantly in background
+      if (GOOGLE_WEBHOOK_URL) {
+        document.getElementById('sync-status').innerHTML = '<span style="color:#00f2fe">Syncing...</span>';
+        
+        fetch(GOOGLE_WEBHOOK_URL, {
+          method: 'POST',
+          mode: 'no-cors',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sets: [logEntry] })
+        }).then(() => {
+          document.getElementById('sync-status').innerHTML = '<span style="color:#00e599">✓ Cloud Saved</span>';
+          setTimeout(() => {
+            document.getElementById('sync-status').innerHTML = '<span style="display:inline-block; width:8px; height:8px; border-radius:50%; background:var(--accent);"></span> Live';
+          }, 3000);
+        }).catch(() => {
+          document.getElementById('sync-status').innerText = 'Pending Sync (Offline)';
+        });
+      }
+    }
+
+    function openWorkoutTab() {
+      document.getElementById('tab-workout').classList.add('active');
+      document.getElementById('tab-progress').classList.remove('active');
+      switchView('view-muscles');
+    }
+
+    function openProgressTab() {
+      document.getElementById('tab-workout').classList.remove('active');
+      document.getElementById('tab-progress').classList.add('active');
+      populateAnalyticsDropdown();
+      switchView('view-analytics');
+      renderChart();
+    }
+
+    function populateAnalyticsDropdown() {
+      const picker = document.getElementById('analytics-exercise-picker');
+      if (state.exercises.length === 0) {
+        picker.innerHTML = '<option value="">No exercises added yet</option>';
+        return;
+      }
+      picker.innerHTML = state.exercises.map(e => `<option value="${e.id}">${e.name} (${e.muscle})</option>`).join('');
+    }
+
+    function setChartRange(days, element) {
+      triggerHaptic();
+      document.querySelectorAll('.filter-pills .pill').forEach(p => p.classList.remove('active'));
+      element.classList.add('active');
+      state.chartDays = days;
+      renderChart();
+    }
+
+    function renderChart() {
+      const picker = document.getElementById('analytics-exercise-picker');
+      const exId = parseInt(picker.value);
+      if (!exId) return;
+
+      const cutoff = new Date();
+      cutoff.setDate(cutoff.getDate() - state.chartDays);
+      const cutoffStr = cutoff.toISOString().split('T')[0];
+
+      // Filter logs for selected exercise and timeframe
+      const exLogs = state.logs
+        .filter(l => l.exerciseId === exId && l.date >= cutoffStr)
+        .sort((a, b) => a.date.localeCompare(b.date));
+
+      // Group by date to find max 1RM per day
+      const dates = [...new Set(exLogs.map(l => l.date))];
+      const max1RMs = dates.map(d => {
+        const dayLogs = exLogs.filter(l => l.date === d);
+        return Math.max(...dayLogs.map(l => l.est1RM));
+      });
+
+      const ctx = document.getElementById('progressChart').getContext('2d');
+      if (chartInstance) chartInstance.destroy();
+
+      // Chart.js Configuration with aesthetic glowing curves
+      Chart.defaults.color = '#7d8597';
+      chartInstance = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: dates.map(d => d.slice(5)), // Format to MM-DD
+          datasets: [{
+            label: 'Estimated 1RM (kg)',
+            data: max1RMs,
+            borderColor: '#00f2fe',
+            backgroundColor: 'rgba(0, 242, 254, 0.1)',
+            borderWidth: 3,
+            fill: true,
+            tension: 0.4, // Smooth bezier curve
+            pointBackgroundColor: '#00f2fe',
+            pointBorderColor: '#fff',
+            pointBorderWidth: 2,
+            pointRadius: 4,
+            pointHoverRadius: 6
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          animation: { duration: 800, easing: 'easeOutQuart' },
+          scales: {
+            x: { grid: { color: '#232736', drawBorder: false } },
+            y: { grid: { color: '#232736', drawBorder: false }, beginAtZero: false }
+          },
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              backgroundColor: '#14161f',
+              titleColor: '#fff',
+              bodyColor: '#00f2fe',
+              borderColor: '#232736',
+              borderWidth: 1,
+              padding: 12,
+              displayColors: false,
+              callbacks: {
+                label: function(context) { return context.parsed.y + ' kg 1RM'; }
+              }
+            }
+          }
+        }
+      });
+    }
+
+    // Initialize the app
+    init();
+  </script>
+</body>
+</html>
