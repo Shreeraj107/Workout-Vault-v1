@@ -86,6 +86,21 @@
     .pill { background: var(--bg); border: 1px solid var(--border); color: var(--text-dim); padding: 7px 14px; border-radius: 20px; font-size: 0.8rem; font-weight: 600; cursor: pointer; flex: 1; text-align: center; }
     .pill.active { background: var(--accent); color: #000; border-color: var(--accent); }
     select { background: #08090d; border: 1px solid var(--border); color: #fff; padding: 12px 14px; border-radius: 10px; font-size: 0.95rem; font-weight: 600; width: 100%; outline: none; margin-bottom: 16px; }
+
+    /* Fix canvas blowout and force fixed height */
+    .chart-wrapper {
+      position: relative;
+      width: 100%;
+      height: 240px;
+      max-height: 240px;
+      overflow: hidden;
+    }
+
+    canvas {
+      width: 100% !important;
+      height: 100% !important;
+      display: block;
+    }
   </style>
 </head>
 <body>
@@ -133,8 +148,10 @@
         <div class="pill" onclick="setChartRange(180, this)">6 Months</div>
       </div>
       <select id="analytics-exercise-picker" onchange="renderChart()"></select>
-      <div class="logger-card" style="padding: 14px 6px;">
-        <canvas id="progressChart" height="250"></canvas>
+      <div class="logger-card" style="padding: 12px 8px;">
+        <div class="chart-wrapper">
+          <canvas id="progressChart"></canvas>
+        </div>
       </div>
     </section>
 
@@ -152,9 +169,11 @@
         <div id="weight-delta" class="delta-badge" style="color: var(--text-dim);"></div>
       </div>
 
-      <div class="logger-card" style="padding: 14px 6px;">
-        <h3 style="font-size: 0.95rem; margin-bottom: 10px; padding-left: 10px; color: var(--text-dim);">Weight Trend Over Time</h3>
-        <canvas id="weightChart" height="230"></canvas>
+      <div class="logger-card" style="padding: 12px 8px;">
+        <h3 style="font-size: 0.95rem; margin-bottom: 8px; padding-left: 10px; color: var(--text-dim);">Weight Trend Over Time</h3>
+        <div class="chart-wrapper">
+          <canvas id="weightChart"></canvas>
+        </div>
       </div>
     </section>
   </div>
@@ -175,7 +194,7 @@
   </nav>
 
   <script>
-    // Paste your Google Apps Script URL here once generated
+    // Paste your Google Apps Script URL back in here
     const GOOGLE_WEBHOOK_URL = ""; 
 
     const MUSCLES = ['Chest', 'Back', 'Shoulder', 'Bicep', 'Tricep', 'Legs', 'Traps', 'Abs'];
@@ -329,13 +348,11 @@
       sendToGoogleSheet(logEntry);
     }
 
-    // --- BODY WEIGHT METHODS ---
     function saveBodyWeight() {
       const val = parseFloat(document.getElementById('input-body-weight').value);
       if (isNaN(val) || val <= 30 || val >= 300) return alert('Enter a valid weight in kg');
 
       const today = new Date().toISOString().split('T')[0];
-      // Update existing record for today if present, otherwise append
       const existingIdx = state.weights.findIndex(w => w.date === today);
       const weightEntry = { type: 'bodyweight', date: today, weight: val };
 
@@ -345,7 +362,6 @@
         state.weights.push(weightEntry);
       }
 
-      // Sort by date ascending
       state.weights.sort((a, b) => a.date.localeCompare(b.date));
       localStorage.setItem('iv_weights', JSON.stringify(state.weights));
 
@@ -369,8 +385,12 @@
     }
 
     function renderWeightChart() {
-      const ctx = document.getElementById('weightChart').getContext('2d');
-      if (weightChart) weightChart.destroy();
+      const canvas = document.getElementById('weightChart');
+      const ctx = canvas.getContext('2d');
+      
+      if (weightChart) {
+        weightChart.destroy();
+      }
 
       const labels = state.weights.map(w => w.date.slice(5));
       const data = state.weights.map(w => w.weight);
@@ -380,30 +400,29 @@
         data: {
           labels: labels,
           datasets: [{
-            label: 'Weight (kg)',
             data: data,
             borderColor: '#00e599',
-            backgroundColor: 'rgba(0, 229, 153, 0.1)',
-            borderWidth: 3,
+            backgroundColor: 'rgba(0, 229, 153, 0.08)',
+            borderWidth: 2,
             fill: true,
-            tension: 0.35,
+            tension: 0.25,
             pointBackgroundColor: '#00e599',
-            pointRadius: 5
+            pointRadius: 4
           }]
         },
         options: {
           responsive: true,
           maintainAspectRatio: false,
+          animation: { duration: 250 },
           scales: {
-            x: { grid: { color: '#232736' } },
-            y: { grid: { color: '#232736' }, beginAtZero: false }
+            x: { grid: { color: '#232736', drawTicks: false }, ticks: { color: '#7d8597', maxTicksLimit: 5 } },
+            y: { grid: { color: '#232736', drawTicks: false }, ticks: { color: '#7d8597' }, beginAtZero: false }
           },
           plugins: { legend: { display: false } }
         }
       });
     }
 
-    // --- TAB SWITCHER ---
     function openTab(tab) {
       document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
       if (tab === 'workout') {
@@ -457,8 +476,12 @@
         return Math.max(...dayLogs.map(l => l.est1RM));
       });
 
-      const ctx = document.getElementById('progressChart').getContext('2d');
-      if (workoutChart) workoutChart.destroy();
+      const canvas = document.getElementById('progressChart');
+      const ctx = canvas.getContext('2d');
+      
+      if (workoutChart) {
+        workoutChart.destroy();
+      }
 
       workoutChart = new Chart(ctx, {
         type: 'line',
@@ -467,19 +490,22 @@
           datasets: [{
             data: max1RMs,
             borderColor: '#00f2fe',
-            backgroundColor: 'rgba(0, 242, 254, 0.1)',
-            borderWidth: 3,
+            backgroundColor: 'rgba(0, 242, 254, 0.08)',
+            borderWidth: 2,
             fill: true,
-            tension: 0.4,
+            tension: 0.25,
+            pointRadius: dates.length > 15 ? 2 : 4,
             pointBackgroundColor: '#00f2fe'
           }]
         },
         options: {
           responsive: true,
           maintainAspectRatio: false,
+          animation: { duration: 250 },
+          interaction: { intersect: false, mode: 'index' },
           scales: {
-            x: { grid: { color: '#232736' } },
-            y: { grid: { color: '#232736' } }
+            x: { grid: { color: '#232736', drawTicks: false }, ticks: { color: '#7d8597', maxTicksLimit: 6 } },
+            y: { grid: { color: '#232736', drawTicks: false }, ticks: { color: '#7d8597' }, beginAtZero: false }
           },
           plugins: { legend: { display: false } }
         }
