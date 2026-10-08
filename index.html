@@ -82,25 +82,15 @@
     .nav-btn.active i { transform: translateY(-2px); }
     
     /* Filter Pills */
-    .filter-pills { display: flex; gap: 8px; margin-bottom: 16px; }
-    .pill { background: var(--bg); border: 1px solid var(--border); color: var(--text-dim); padding: 7px 14px; border-radius: 20px; font-size: 0.8rem; font-weight: 600; cursor: pointer; flex: 1; text-align: center; }
+    .filter-pills { display: flex; gap: 6px; margin-bottom: 16px; overflow-x: auto; padding-bottom: 4px; }
+    .filter-pills::-webkit-scrollbar { display: none; }
+    .pill { background: var(--bg); border: 1px solid var(--border); color: var(--text-dim); padding: 7px 12px; border-radius: 20px; font-size: 0.75rem; font-weight: 600; cursor: pointer; white-space: nowrap; }
     .pill.active { background: var(--accent); color: #000; border-color: var(--accent); }
     select { background: #08090d; border: 1px solid var(--border); color: #fff; padding: 12px 14px; border-radius: 10px; font-size: 0.95rem; font-weight: 600; width: 100%; outline: none; margin-bottom: 16px; }
 
     /* Fix canvas blowout and force fixed height */
-    .chart-wrapper {
-      position: relative;
-      width: 100%;
-      height: 240px;
-      max-height: 240px;
-      overflow: hidden;
-    }
-
-    canvas {
-      width: 100% !important;
-      height: 100% !important;
-      display: block;
-    }
+    .chart-wrapper { position: relative; width: 100%; height: 240px; max-height: 240px; overflow: hidden; }
+    canvas { width: 100% !important; height: 100% !important; display: block; }
   </style>
 </head>
 <body>
@@ -142,12 +132,13 @@
     <!-- VIEW 4: PROGRESS CHARTS -->
     <section id="view-analytics" class="view">
       <h2 style="margin-bottom: 14px; font-size: 1.3rem;">Strength Curve (1RM)</h2>
-      <div class="filter-pills">
-        <div class="pill active" onclick="setChartRange(28, this)">28 Days</div>
-        <div class="pill" onclick="setChartRange(90, this)">3 Months</div>
-        <div class="pill" onclick="setChartRange(180, this)">6 Months</div>
+      <div class="filter-pills" id="workout-filters">
+        <div class="pill active" onclick="setChartRange('workout', 28, this)">28 Days</div>
+        <div class="pill" onclick="setChartRange('workout', 90, this)">3 Months</div>
+        <div class="pill" onclick="setChartRange('workout', 180, this)">6 Months</div>
+        <div class="pill" onclick="setChartRange('workout', 0, this)">All Time</div>
       </div>
-      <select id="analytics-exercise-picker" onchange="renderChart()"></select>
+      <select id="analytics-exercise-picker" onchange="renderWorkoutChart()"></select>
       <div class="logger-card" style="padding: 12px 8px;">
         <div class="chart-wrapper">
           <canvas id="progressChart"></canvas>
@@ -160,17 +151,24 @@
       <h2 style="margin-bottom: 14px; font-size: 1.3rem;">Weekly Body Weight</h2>
       <div class="weight-card">
         <div id="sunday-indicator" class="sunday-badge inactive">Checking Day...</div>
-        <p style="color: var(--text-dim); font-size: 0.85rem; margin-bottom: 12px;">Weigh in first thing Sunday morning</p>
+        <p style="color: var(--text-dim); font-size: 0.85rem; margin-bottom: 12px;">Log your morning weight</p>
         <div style="display: flex; justify-content: center; align-items: baseline; gap: 8px;">
           <input type="number" id="input-body-weight" placeholder="0.0" step="0.1" inputmode="decimal" style="max-width: 140px; font-size: 1.8rem; height: 60px;">
           <span style="font-size: 1.2rem; font-weight: 700; color: var(--text-dim);">kg</span>
         </div>
-        <button class="btn-save-weight" onclick="saveBodyWeight()">Log Sunday Weight</button>
+        <button class="btn-save-weight" onclick="saveBodyWeight()">Save Weight</button>
         <div id="weight-delta" class="delta-badge" style="color: var(--text-dim);"></div>
       </div>
 
+      <h3 style="font-size: 1.1rem; margin-bottom: 10px; margin-top: 10px;">Weight Trend History</h3>
+      <div class="filter-pills" id="weight-filters">
+        <div class="pill active" onclick="setChartRange('weight', 28, this)">28 Days</div>
+        <div class="pill" onclick="setChartRange('weight', 90, this)">3 Months</div>
+        <div class="pill" onclick="setChartRange('weight', 180, this)">6 Months</div>
+        <div class="pill" onclick="setChartRange('weight', 0, this)">All Time</div>
+      </div>
+
       <div class="logger-card" style="padding: 12px 8px;">
-        <h3 style="font-size: 0.95rem; margin-bottom: 8px; padding-left: 10px; color: var(--text-dim);">Weight Trend Over Time</h3>
         <div class="chart-wrapper">
           <canvas id="weightChart"></canvas>
         </div>
@@ -194,7 +192,6 @@
   </nav>
 
   <script>
-    // Paste your Google Apps Script URL back in here
     const GOOGLE_WEBHOOK_URL = ""; 
 
     const MUSCLES = ['Chest', 'Back', 'Shoulder', 'Bicep', 'Tricep', 'Legs', 'Traps', 'Abs'];
@@ -204,7 +201,8 @@
       weights: JSON.parse(localStorage.getItem('iv_weights') || '[]'),
       activeMuscle: '',
       activeExercise: null,
-      chartDays: 28
+      chartDaysWorkout: 28,
+      chartDaysWeight: 28
     };
 
     let workoutChart = null;
@@ -212,16 +210,42 @@
 
     function init() {
       const container = document.getElementById('muscle-container');
-      container.innerHTML = MUSCLES.map(m => `
-        <div class="muscle-card" onclick="selectMuscle('${m}')">${m}</div>
-      `).join('');
+      container.innerHTML = MUSCLES.map(m => `<div class="muscle-card" onclick="selectMuscle('${m}')">${m}</div>`).join('');
       checkSundayStatus();
     }
 
+    // --- HELPER: GENERATE CONTINUOUS DATE ARRAY ---
+    function getContinuousDates(logs, daysFilter) {
+      if (!logs || logs.length === 0) return [];
+      
+      let startDt = new Date();
+      let endDt = new Date();
+
+      if (daysFilter === 0) {
+        // All Time: from the earliest log date to today
+        startDt = new Date(logs[0].date);
+      } else {
+        // Limited days: from (today - days) to today
+        startDt.setDate(endDt.getDate() - daysFilter + 1);
+      }
+
+      const dates = [];
+      let currentDt = new Date(startDt);
+      while (currentDt <= endDt) {
+        const yr = currentDt.getFullYear();
+        const mo = String(currentDt.getMonth() + 1).padStart(2, '0');
+        const da = String(currentDt.getDate()).padStart(2, '0');
+        dates.push(`${yr}-${mo}-${da}`);
+        currentDt.setDate(currentDt.getDate() + 1);
+      }
+      return dates;
+    }
+
+    // --- LOGIC & UI ---
     function checkSundayStatus() {
       const today = new Date();
       const badge = document.getElementById('sunday-indicator');
-      if (today.getDay() === 0) { // 0 is Sunday
+      if (today.getDay() === 0) {
         badge.className = 'sunday-badge active';
         badge.innerText = '⚡ It is Sunday (Check-in Day)';
       } else {
@@ -234,10 +258,7 @@
 
     function switchView(viewId) {
       document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
-      setTimeout(() => {
-        document.getElementById(viewId).classList.add('active');
-        window.scrollTo(0,0);
-      }, 10);
+      setTimeout(() => { document.getElementById(viewId).classList.add('active'); window.scrollTo(0,0); }, 10);
     }
 
     function selectMuscle(name) {
@@ -260,13 +281,12 @@
       const list = document.getElementById('exercise-list');
       const filtered = state.exercises.filter(e => e.muscle === state.activeMuscle);
       if (filtered.length === 0) {
-        list.innerHTML = `<div style="text-align: center; padding: 40px 20px; color: var(--text-dim);">No exercises yet.<br>Tap "+ New Exercise" to create one.</div>`;
+        list.innerHTML = `<div style="text-align: center; padding: 40px 20px; color: var(--text-dim);">No exercises yet.</div>`;
         return;
       }
       list.innerHTML = filtered.map(e => `
         <div class="exercise-item" onclick="openLogger(${e.id})">
-          <span>${e.name}</span>
-          <span style="color: var(--accent);">→</span>
+          <span>${e.name}</span><span style="color: var(--accent);">→</span>
         </div>
       `).join('');
     }
@@ -283,15 +303,12 @@
       for (let i = 1; i <= 3; i++) {
         const prev = lastSession.find(s => s.setNumber === i);
         const prevTxt = prev ? `Last: ${prev.weight}kg × ${prev.reps}` : 'First time logging set';
-        const ghostWeight = prev ? prev.weight : '';
-        const ghostReps = prev ? prev.reps : '';
-        
         html += `
           <div class="set-row" id="row-${i}">
             <div class="ghost-info">${prevTxt}</div>
             <span style="font-weight: 700; color: var(--text-dim); font-size: 0.9rem;">SET ${i}</span>
-            <input type="number" id="weight-${i}" placeholder="kg" value="${ghostWeight}" inputmode="decimal">
-            <input type="number" id="reps-${i}" placeholder="reps" value="${ghostReps}" inputmode="numeric">
+            <input type="number" id="weight-${i}" placeholder="kg" value="${prev ? prev.weight : ''}" inputmode="decimal">
+            <input type="number" id="reps-${i}" placeholder="reps" value="${prev ? prev.reps : ''}" inputmode="numeric">
             <button class="btn-check" onclick="completeSet(${i})">✓</button>
           </div>
         `;
@@ -313,11 +330,14 @@
       if (isNaN(weight) || isNaN(reps) || reps <= 0) return alert('Enter valid weight and reps');
 
       const est1RM = weight * (1 + reps / 30);
-      const historicalMax = Math.max(0, ...state.logs
-        .filter(l => l.exerciseId === state.activeExercise.id)
-        .map(l => l.est1RM || 0));
-
+      const historicalMax = Math.max(0, ...state.logs.filter(l => l.exerciseId === state.activeExercise.id).map(l => l.est1RM || 0));
       const isPR = historicalMax > 0 && est1RM > historicalMax;
+
+      // Extract local date reliably
+      const now = new Date();
+      const yr = now.getFullYear();
+      const mo = String(now.getMonth() + 1).padStart(2, '0');
+      const da = String(now.getDate()).padStart(2, '0');
 
       const logEntry = {
         type: 'workout',
@@ -329,8 +349,8 @@
         reps: reps,
         est1RM: parseFloat(est1RM.toFixed(1)),
         isPr: isPR,
-        date: new Date().toISOString().split('T')[0],
-        time: new Date().toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit' })
+        date: `${yr}-${mo}-${da}`,
+        time: now.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit' })
       };
 
       state.logs.push(logEntry);
@@ -344,7 +364,6 @@
         row.classList.add('row-pr-broken');
         document.getElementById('logger-status').innerText = '🔥 NEW PR!';
       }
-
       sendToGoogleSheet(logEntry);
     }
 
@@ -352,20 +371,22 @@
       const val = parseFloat(document.getElementById('input-body-weight').value);
       if (isNaN(val) || val <= 30 || val >= 300) return alert('Enter a valid weight in kg');
 
-      const today = new Date().toISOString().split('T')[0];
-      const existingIdx = state.weights.findIndex(w => w.date === today);
-      const weightEntry = { type: 'bodyweight', date: today, weight: val };
+      const now = new Date();
+      const yr = now.getFullYear();
+      const mo = String(now.getMonth() + 1).padStart(2, '0');
+      const da = String(now.getDate()).padStart(2, '0');
+      const todayStr = `${yr}-${mo}-${da}`;
 
-      if (existingIdx > -1) {
-        state.weights[existingIdx] = weightEntry;
-      } else {
-        state.weights.push(weightEntry);
-      }
+      const existingIdx = state.weights.findIndex(w => w.date === todayStr);
+      const weightEntry = { type: 'bodyweight', date: todayStr, weight: val };
+
+      if (existingIdx > -1) state.weights[existingIdx] = weightEntry;
+      else state.weights.push(weightEntry);
 
       state.weights.sort((a, b) => a.date.localeCompare(b.date));
       localStorage.setItem('iv_weights', JSON.stringify(state.weights));
 
-      alert('Body weight logged successfully!');
+      alert('Body weight saved!');
       updateWeightDelta();
       renderWeightChart();
       sendToGoogleSheet(weightEntry);
@@ -381,48 +402,10 @@
       const prev = state.weights[state.weights.length - 2].weight;
       const diff = (latest - prev).toFixed(1);
       const sign = diff > 0 ? `+${diff}` : `${diff}`;
-      deltaEl.innerHTML = `Latest: <strong>${latest} kg</strong> (${sign} kg from last entry)`;
+      deltaEl.innerHTML = `Latest: <strong>${latest} kg</strong> (${sign} kg from previous)`;
     }
 
-    function renderWeightChart() {
-      const canvas = document.getElementById('weightChart');
-      const ctx = canvas.getContext('2d');
-      
-      if (weightChart) {
-        weightChart.destroy();
-      }
-
-      const labels = state.weights.map(w => w.date.slice(5));
-      const data = state.weights.map(w => w.weight);
-
-      weightChart = new Chart(ctx, {
-        type: 'line',
-        data: {
-          labels: labels,
-          datasets: [{
-            data: data,
-            borderColor: '#00e599',
-            backgroundColor: 'rgba(0, 229, 153, 0.08)',
-            borderWidth: 2,
-            fill: true,
-            tension: 0.25,
-            pointBackgroundColor: '#00e599',
-            pointRadius: 4
-          }]
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          animation: { duration: 250 },
-          scales: {
-            x: { grid: { color: '#232736', drawTicks: false }, ticks: { color: '#7d8597', maxTicksLimit: 5 } },
-            y: { grid: { color: '#232736', drawTicks: false }, ticks: { color: '#7d8597' }, beginAtZero: false }
-          },
-          plugins: { legend: { display: false } }
-        }
-      });
-    }
-
+    // --- CHARTS & NAVIGATION ---
     function openTab(tab) {
       document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
       if (tab === 'workout') {
@@ -432,7 +415,7 @@
         document.getElementById('tab-progress').classList.add('active');
         populateAnalyticsDropdown();
         switchView('view-analytics');
-        renderChart();
+        renderWorkoutChart();
       } else if (tab === 'weight') {
         document.getElementById('tab-weight').classList.add('active');
         switchView('view-weight');
@@ -443,59 +426,98 @@
 
     function populateAnalyticsDropdown() {
       const picker = document.getElementById('analytics-exercise-picker');
-      if (state.exercises.length === 0) {
-        picker.innerHTML = '<option value="">No exercises added yet</option>';
-        return;
-      }
+      if (state.exercises.length === 0) { picker.innerHTML = '<option value="">No exercises added</option>'; return; }
       picker.innerHTML = state.exercises.map(e => `<option value="${e.id}">${e.name} (${e.muscle})</option>`).join('');
     }
 
-    function setChartRange(days, el) {
-      document.querySelectorAll('.filter-pills .pill').forEach(p => p.classList.remove('active'));
+    function setChartRange(type, days, el) {
+      document.querySelectorAll(`#${type}-filters .pill`).forEach(p => p.classList.remove('active'));
       el.classList.add('active');
-      state.chartDays = days;
-      renderChart();
+      if (type === 'workout') {
+        state.chartDaysWorkout = days;
+        renderWorkoutChart();
+      } else {
+        state.chartDaysWeight = days;
+        renderWeightChart();
+      }
     }
 
-    function renderChart() {
+    function renderWorkoutChart() {
       const picker = document.getElementById('analytics-exercise-picker');
       const exId = parseInt(picker.value);
       if (!exId) return;
 
-      const cutoff = new Date();
-      cutoff.setDate(cutoff.getDate() - state.chartDays);
-      const cutoffStr = cutoff.toISOString().split('T')[0];
+      const exLogs = state.logs.filter(l => l.exerciseId === exId).sort((a, b) => a.date.localeCompare(b.date));
+      const timelineDates = getContinuousDates(exLogs, state.chartDaysWorkout);
 
-      const exLogs = state.logs
-        .filter(l => l.exerciseId === exId && l.date >= cutoffStr)
-        .sort((a, b) => a.date.localeCompare(b.date));
-
-      const dates = [...new Set(exLogs.map(l => l.date))];
-      const max1RMs = dates.map(d => {
+      // Map data to continuous timeline. Unlogged days return null (Chart.js will bridge them)
+      const dataPoints = timelineDates.map(d => {
         const dayLogs = exLogs.filter(l => l.date === d);
+        if (dayLogs.length === 0) return null;
         return Math.max(...dayLogs.map(l => l.est1RM));
       });
 
-      const canvas = document.getElementById('progressChart');
-      const ctx = canvas.getContext('2d');
-      
-      if (workoutChart) {
-        workoutChart.destroy();
-      }
+      const ctx = document.getElementById('progressChart').getContext('2d');
+      if (workoutChart) workoutChart.destroy();
 
       workoutChart = new Chart(ctx, {
         type: 'line',
         data: {
-          labels: dates.map(d => d.slice(5)),
+          labels: timelineDates.map(d => d.slice(5)), // Format to MM-DD
           datasets: [{
-            data: max1RMs,
+            data: dataPoints,
             borderColor: '#00f2fe',
             backgroundColor: 'rgba(0, 242, 254, 0.08)',
             borderWidth: 2,
             fill: true,
-            tension: 0.25,
-            pointRadius: dates.length > 15 ? 2 : 4,
+            tension: 0.2, // Smooths lines between distant dates
+            spanGaps: true, // IMPORTANT: Draws continuous line over empty days
+            pointRadius: dataPoints.filter(d => d !== null).length > 15 ? 2 : 4,
             pointBackgroundColor: '#00f2fe'
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          animation: { duration: 250 },
+          interaction: { intersect: false, mode: 'index' },
+          scales: {
+            x: { grid: { color: '#232736', drawTicks: false }, ticks: { color: '#7d8597', maxTicksLimit: 6 } },
+            y: { grid: { color: '#232736', drawTicks: false }, ticks: { color: '#7d8597' }, beginAtZero: false }
+          },
+          plugins: { legend: { display: false } }
+        }
+      });
+    }
+
+    function renderWeightChart() {
+      const sortedWeights = [...state.weights].sort((a, b) => a.date.localeCompare(b.date));
+      const timelineDates = getContinuousDates(sortedWeights, state.chartDaysWeight);
+
+      // Map data to continuous timeline
+      const dataPoints = timelineDates.map(d => {
+        const dayLogs = sortedWeights.filter(w => w.date === d);
+        if (dayLogs.length === 0) return null;
+        return dayLogs[dayLogs.length - 1].weight;
+      });
+
+      const ctx = document.getElementById('weightChart').getContext('2d');
+      if (weightChart) weightChart.destroy();
+
+      weightChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: timelineDates.map(d => d.slice(5)),
+          datasets: [{
+            data: dataPoints,
+            borderColor: '#00e599',
+            backgroundColor: 'rgba(0, 229, 153, 0.08)',
+            borderWidth: 2,
+            fill: true,
+            tension: 0.2,
+            spanGaps: true, // Connects the dots across empty days accurately
+            pointRadius: dataPoints.filter(d => d !== null).length > 15 ? 2 : 4,
+            pointBackgroundColor: '#00e599'
           }]
         },
         options: {
@@ -522,9 +544,7 @@
         body: JSON.stringify(payload)
       }).then(() => {
         document.getElementById('sync-status').innerHTML = '<span style="color:#00e599">✓ Cloud Saved</span>';
-        setTimeout(() => {
-          document.getElementById('sync-status').innerHTML = '<span style="display:inline-block; width:8px; height:8px; border-radius:50%; background:var(--accent);"></span> Live';
-        }, 2500);
+        setTimeout(() => { document.getElementById('sync-status').innerHTML = '<span style="display:inline-block; width:8px; height:8px; border-radius:50%; background:var(--accent);"></span> Live'; }, 2500);
       }).catch(() => {
         document.getElementById('sync-status').innerText = 'Offline Save';
       });
